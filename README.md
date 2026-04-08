@@ -2,7 +2,7 @@
 
 A port of [David Leininger's Cobalt Next][upstream] VS Code theme to Zed.
 
-Cobalt Next is *not* Cobalt2. It's the Oceanic Next palette (slate `#1b2b34` background, warm `#fac863` yellow, `#5fb3b3` teal, `#ed6f7d` red, `#99c794` green, `#c5a5c5` purple, `#eb9a6d` orange) used in the Cobalt2 *spirit* — italic comments and language variables, angry-red tags, yellow types, blue functions.
+<img width="1225" height="820" alt="screenshot" src="https://github.com/user-attachments/assets/c9793c0c-d115-4099-88d2-09de69538da5" />
 
 ## Variants
 
