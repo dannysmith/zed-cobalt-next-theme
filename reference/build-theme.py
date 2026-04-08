@@ -1,30 +1,36 @@
 #!/usr/bin/env python3
 """
-Synthesise the final cobalt-next.json Zed theme family from the
-Approach C converter outputs + Approach A worklist fixes + extra polish.
+Build the Cobalt Next Zed theme family from the Zed theme_importer's
+raw converter output by applying hand-polish fixes.
 
 Re-run after editing this file to regenerate the theme.
 
-Inputs:
-  approach-c-output.json
-  approach-c-output-dark.json
-  approach-c-output-minimal.json
+Inputs (alongside this script):
+  converter-output/cobalt-next.json
+  converter-output/cobalt-next-dark.json
+  converter-output/cobalt-next-minimal.json
 
 Outputs:
-  cobalt-next.json                      (in this directory)
-  ~/.config/zed/themes/cobalt-next.json (live install for Zed)
+  ../themes/cobalt-next.json              (in-repo extension artifact)
+  ~/.config/zed/themes/cobalt-next.json   (local install for live testing)
+
+See reference/README.md for how to regenerate the converter outputs.
+See reference/syntax-rules.md for the Cobalt Next palette and token inventory.
+See reference/notes.md for port-specific decisions and trade-offs.
 """
 
 import json
-import os
 from copy import deepcopy
 from pathlib import Path
 
 HERE = Path(__file__).parent
+REPO_ROOT = HERE.parent
+CONVERTER_OUTPUT_DIR = HERE / "converter-output"
+REPO_THEME_FILE = REPO_ROOT / "themes" / "cobalt-next.json"
 ZED_THEMES_DIR = Path.home() / ".config" / "zed" / "themes"
 
 # ---------------------------------------------------------------------------
-# Cobalt Next palette (distilled from approach-a-inventory.md)
+# Cobalt Next palette (distilled from Cobalt Next's VS Code tokenColors)
 # ---------------------------------------------------------------------------
 
 PALETTE = {
@@ -48,15 +54,16 @@ PALETTE = {
     "purple_dim":    "#BB80B3",  # attributes
     "blue":          "#5a9bcf",  # functions, link URLs, markdown italic
     "orange":        "#eb9a6d",  # numbers, constants, parameters, md inline code
-    # Danny's markdown override
-    "h2_magenta":    "#e255a1",  # H1/H2 — H2 magenta wins per Danny's preference
+    # markdown heading override
+    "h2_magenta":    "#e255a1",  # H2 magenta override; H1/H2 share Zed's `title` token
 }
 
 # ---------------------------------------------------------------------------
-# Phase 2 syntax fixes — applied to all 3 variants (syntax block is shared)
+# Syntax fixes — applied to all 3 variants (they share one syntax block).
+# Each entry overrides whatever the Zed converter produced for that token.
+# Commentary explains the specific converter bug being corrected.
 # ---------------------------------------------------------------------------
 
-# 6 wrong-token corrections (5 from worklist + constructor)
 SYNTAX_FIXES = {
     # converter chose "Other Variable, String Link" (red) — should be markdown
     # link title green for link text...
@@ -69,41 +76,41 @@ SYNTAX_FIXES = {
     # Converter's StringEscape fallback chain hit `constant.character` (orange)
     # before finding `constant.character.escape` (teal).
     "string.escape":     {"color": PALETTE["teal"]},
-    # Cobalt Next has an explicit "D-Line Preference Edit" override on
-    # `variable.language` to purple italic; converter picked the JS-specific
-    # red rule instead.
+    # Cobalt Next has an explicit author override on `variable.language` to
+    # purple italic (see syntax-rules.md rule 12). Converter picked the later
+    # JS-specific red rule instead — this brings `this`/`self`/`super` back
+    # to purple italic to match Cobalt Next's intent.
     "variable.special":  {"color": PALETTE["purple"], "font_style": "italic"},
     # Converter latched onto "[CSS] - Entity Tag Name" (red) incidentally.
     # Constructors are type-like — match the `type` color (yellow).
     "constructor":       {"color": PALETTE["yellow"]},
-    # `property` is the most contested token because multiple languages
-    # use it for different concepts:
+    # `property` is the most contested token because multiple languages use
+    # it for different concepts (see notes.md "Property token split"):
     #   YAML keys        → @property       (bare)     — red in VS Code
     #   CSS property     → @property       (bare)     — yellow in VS Code
     #   TS/JS `foo.bar`  → @property       (bare)     — white in VS Code
     #   Rust/Go fields   → @property       (bare)     — white in VS Code
-    #   JSON keys        → @property.json_key         — yellow in VS Code (Danny's pick)
+    #   JSON keys        → @property.json_key         — yellow (preferred)
     #   TS object keys   → @property.name             — yellow
     # Zed's theme resolver walks dot-prefixes, so subscopes override.
-    # We set the base to red (YAML priority per user) and override the
-    # two subscopes for JSON and object literal keys to yellow.
-    # Trade-off: TS `foo.bar` field access and Rust/Go struct fields
-    # become red. Method calls (`.foo()`) are @function.method, unaffected.
+    # Base set to red (YAML priority); subscopes overridden to yellow below.
+    # Trade-off: TS `foo.bar` field access and Rust/Go struct fields become
+    # red. Method calls (`.foo()`) are `@function.method`, unaffected.
     "property":            {"color": PALETTE["red"]},
 }
 
-# 10 missing-token additions (worklist) + a few extras
+# Tokens the converter leaves unfilled, plus subscope overrides for
+# `property` handled above.
 SYNTAX_ADDITIONS = {
     # markdown italic — blue italic (Cobalt Next markup.italic.markdown rule)
     "emphasis":          {"color": PALETTE["blue"], "font_style": "italic"},
     # markdown bold — teal bold (markup.bold.markdown rule)
     "emphasis.strong":   {"color": PALETTE["teal"], "font_weight": 700},
-    # markdown headings — Danny's H2 magenta override wins (H1/H2 share `title`)
+    # markdown headings — H2 magenta override wins (H1/H2 share `title`)
     "title":             {"color": PALETTE["h2_magenta"], "font_weight": 700},
     # TS/JS object literal keys and labeled statements — yellow
-    # (Cobalt Next's TS screenshot shows object keys yellow in zod schemas)
     "property.name":     {"color": PALETTE["yellow"]},
-    # JSON keys specifically — yellow (Danny's preference, overrides red `property`)
+    # JSON keys specifically — yellow (overrides the red `property` base)
     "property.json_key": {"color": PALETTE["yellow"]},
     # parameter names — orange italic (Number/Constant/Parameter rule + italicsify)
     "variable.parameter":{"color": PALETTE["orange"], "font_style": "italic"},
@@ -120,7 +127,8 @@ SYNTAX_ADDITIONS = {
 }
 
 # Tokens left intentionally empty: hint, predictive, primary
-# (the Zed converter source has no scope mapping for these by default)
+# (Zed's converter has no scope mapping for these; none of the source
+# theme's rules semantically fit them.)
 
 
 # ---------------------------------------------------------------------------
@@ -255,7 +263,7 @@ def apply_fixes(theme):
 # ---------------------------------------------------------------------------
 
 def load_variant(filename):
-    with open(HERE / filename) as f:
+    with open(CONVERTER_OUTPUT_DIR / filename) as f:
         theme = json.load(f)
     # Strip the per-variant $schema; the family-level one wins.
     theme.pop("$schema", None)
@@ -263,9 +271,9 @@ def load_variant(filename):
 
 
 def main():
-    main_theme = apply_fixes(load_variant("approach-c-output.json"))
-    dark_theme = apply_fixes(load_variant("approach-c-output-dark.json"))
-    minimal_theme = apply_fixes(load_variant("approach-c-output-minimal.json"))
+    main_theme = apply_fixes(load_variant("cobalt-next.json"))
+    dark_theme = apply_fixes(load_variant("cobalt-next-dark.json"))
+    minimal_theme = apply_fixes(load_variant("cobalt-next-minimal.json"))
 
     family = {
         "$schema": "https://zed.dev/schema/themes/v0.2.0.json",
@@ -274,16 +282,17 @@ def main():
         "themes": [main_theme, dark_theme, minimal_theme],
     }
 
-    out_local = HERE / "cobalt-next.json"
-    out_zed = ZED_THEMES_DIR / "cobalt-next.json"
+    payload = json.dumps(family, indent=2) + "\n"
 
-    out_local.write_text(json.dumps(family, indent=2) + "\n")
+    REPO_THEME_FILE.parent.mkdir(parents=True, exist_ok=True)
+    REPO_THEME_FILE.write_text(payload)
 
     ZED_THEMES_DIR.mkdir(parents=True, exist_ok=True)
-    out_zed.write_text(json.dumps(family, indent=2) + "\n")
+    zed_theme_file = ZED_THEMES_DIR / "cobalt-next.json"
+    zed_theme_file.write_text(payload)
 
-    print(f"wrote {out_local}  ({out_local.stat().st_size} bytes)")
-    print(f"wrote {out_zed}  ({out_zed.stat().st_size} bytes)")
+    print(f"wrote {REPO_THEME_FILE}  ({REPO_THEME_FILE.stat().st_size} bytes)")
+    print(f"wrote {zed_theme_file}  ({zed_theme_file.stat().st_size} bytes)")
     print(f"{len(family['themes'])} variants in family")
     print(f"syntax tokens per variant: {len(main_theme['style']['syntax'])}")
 

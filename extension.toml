@@ -1,0 +1,18 @@
+id = "cobalt-next"
+name = "Cobalt Next"
+version = "0.1.0"
+schema_version = 1
+description = "A port of David Leininger's Cobalt Next VS Code theme to Zed — Oceanic Next palette with the Cobalt2 spirit. Ships main, Dark, and Minimal variants."
+authors = ["Danny Smith"]
+themes = ["themes/cobalt-next.json"]
+languages = []
+
+[lib]
+
+[grammars]
+
+[language_servers]
+
+[slash_commands]
+
+[indexed_docs_providers]
