@@ -1,0 +1,292 @@
+#!/usr/bin/env python3
+"""
+Synthesise the final cobalt-next.json Zed theme family from the
+Approach C converter outputs + Approach A worklist fixes + extra polish.
+
+Re-run after editing this file to regenerate the theme.
+
+Inputs:
+  approach-c-output.json
+  approach-c-output-dark.json
+  approach-c-output-minimal.json
+
+Outputs:
+  cobalt-next.json                      (in this directory)
+  ~/.config/zed/themes/cobalt-next.json (live install for Zed)
+"""
+
+import json
+import os
+from copy import deepcopy
+from pathlib import Path
+
+HERE = Path(__file__).parent
+ZED_THEMES_DIR = Path.home() / ".config" / "zed" / "themes"
+
+# ---------------------------------------------------------------------------
+# Cobalt Next palette (distilled from approach-a-inventory.md)
+# ---------------------------------------------------------------------------
+
+PALETTE = {
+    # backgrounds
+    "bg":            "#1b2b34",  # main editor / panel background (slate)
+    "bg_dark":       "#0f1c23",  # sidebar / darker variant editor background
+    "bg_darker":     "#0b151b",  # dropdown bg, tab border (very dark)
+    "surface":       "#343d46",  # tab.active, line highlight, raised surfaces
+    "surface_high":  "#4f5b66",  # selection, line numbers, muted ruler
+    "surface_higher":"#65737e",  # comments, inactive sidebar text, indent active
+    # foregrounds
+    "fg":            "#d8dee9",  # default text (sidebar, ui labels)
+    "fg_bright":     "#ffffff",  # editor foreground
+    "fg_var":        "#CDD3DE",  # plain variables
+    # accents
+    "yellow":        "#fac863",  # cursor, classes, types, JSON keys lvl0
+    "teal":          "#5fb3b3",  # operators, punctuation, URLs, regex, escapes
+    "red":           "#ed6f7d",  # tags, errors
+    "green":         "#99c794",  # strings, link text
+    "purple":        "#c5a5c5",  # keywords, language vars, native md headings
+    "purple_dim":    "#BB80B3",  # attributes
+    "blue":          "#5a9bcf",  # functions, link URLs, markdown italic
+    "orange":        "#eb9a6d",  # numbers, constants, parameters, md inline code
+    # Danny's markdown override
+    "h2_magenta":    "#e255a1",  # H1/H2 — H2 magenta wins per Danny's preference
+}
+
+# ---------------------------------------------------------------------------
+# Phase 2 syntax fixes — applied to all 3 variants (syntax block is shared)
+# ---------------------------------------------------------------------------
+
+# 6 wrong-token corrections (5 from worklist + constructor)
+SYNTAX_FIXES = {
+    # converter chose "Other Variable, String Link" (red) — should be markdown
+    # link title green for link text...
+    "link_text":         {"color": PALETTE["green"]},
+    # ...and markdown link address blue for link URI
+    "link_uri":          {"color": PALETTE["blue"]},
+    # Cobalt Next uses `string.regexp` (extra `p`); converter looks for
+    # `string.regex`. Fallback to `string` gives wrong green. Should be teal.
+    "string.regex":      {"color": PALETTE["teal"]},
+    # Converter's StringEscape fallback chain hit `constant.character` (orange)
+    # before finding `constant.character.escape` (teal).
+    "string.escape":     {"color": PALETTE["teal"]},
+    # Cobalt Next has an explicit "D-Line Preference Edit" override on
+    # `variable.language` to purple italic; converter picked the JS-specific
+    # red rule instead.
+    "variable.special":  {"color": PALETTE["purple"], "font_style": "italic"},
+    # Converter latched onto "[CSS] - Entity Tag Name" (red) incidentally.
+    # Constructors are type-like — match the `type` color (yellow).
+    "constructor":       {"color": PALETTE["yellow"]},
+    # `property` is the most contested token because multiple languages
+    # use it for different concepts:
+    #   YAML keys        → @property       (bare)     — red in VS Code
+    #   CSS property     → @property       (bare)     — yellow in VS Code
+    #   TS/JS `foo.bar`  → @property       (bare)     — white in VS Code
+    #   Rust/Go fields   → @property       (bare)     — white in VS Code
+    #   JSON keys        → @property.json_key         — yellow in VS Code (Danny's pick)
+    #   TS object keys   → @property.name             — yellow
+    # Zed's theme resolver walks dot-prefixes, so subscopes override.
+    # We set the base to red (YAML priority per user) and override the
+    # two subscopes for JSON and object literal keys to yellow.
+    # Trade-off: TS `foo.bar` field access and Rust/Go struct fields
+    # become red. Method calls (`.foo()`) are @function.method, unaffected.
+    "property":            {"color": PALETTE["red"]},
+}
+
+# 10 missing-token additions (worklist) + a few extras
+SYNTAX_ADDITIONS = {
+    # markdown italic — blue italic (Cobalt Next markup.italic.markdown rule)
+    "emphasis":          {"color": PALETTE["blue"], "font_style": "italic"},
+    # markdown bold — teal bold (markup.bold.markdown rule)
+    "emphasis.strong":   {"color": PALETTE["teal"], "font_weight": 700},
+    # markdown headings — Danny's H2 magenta override wins (H1/H2 share `title`)
+    "title":             {"color": PALETTE["h2_magenta"], "font_weight": 700},
+    # TS/JS object literal keys and labeled statements — yellow
+    # (Cobalt Next's TS screenshot shows object keys yellow in zod schemas)
+    "property.name":     {"color": PALETTE["yellow"]},
+    # JSON keys specifically — yellow (Danny's preference, overrides red `property`)
+    "property.json_key": {"color": PALETTE["yellow"]},
+    # parameter names — orange italic (Number/Constant/Parameter rule + italicsify)
+    "variable.parameter":{"color": PALETTE["orange"], "font_style": "italic"},
+    # JSX text / embedded blocks — foreground
+    "embedded":          {"color": PALETTE["fg"]},
+    # enum types — match classes/types yellow
+    "enum":              {"color": PALETTE["yellow"]},
+    # Rust enum variants and similar — match enum/type yellow
+    "variant":           {"color": PALETTE["yellow"]},
+    # loop labels and similar — match function blue
+    "label":             {"color": PALETTE["blue"]},
+    # preprocessor directives — keyword-adjacent purple
+    "preproc":           {"color": PALETTE["purple"]},
+}
+
+# Tokens left intentionally empty: hint, predictive, primary
+# (the Zed converter source has no scope mapping for these by default)
+
+
+# ---------------------------------------------------------------------------
+# UI tweaks shared across all variants
+# ---------------------------------------------------------------------------
+
+def shared_ui_polish(style):
+    """In-place modifications to a variant's `style` block."""
+
+    # --- Border overhaul --------------------------------------------------
+    # The converter mapped most border keys to VS Code's `panel.border`
+    # which Cobalt Next sets to teal `#5fb3b3`. In VS Code this only shows
+    # on the panel separator and active tab underline; in Zed these keys
+    # are the *ubiquitous* panel/pane dividers, so teal lines appear
+    # between every panel. Override to a dark subtle border and reserve
+    # teal for actual selection emphasis.
+    style["border"] = PALETTE["bg_darker"]            # general borders — very dark
+    style["border.variant"] = PALETTE["bg_darker"]
+    style["border.transparent"] = PALETTE["bg_darker"]
+    style["border.disabled"] = PALETTE["surface"]
+    style["border.focused"] = PALETTE["surface"]      # focus rings
+    style["border.selected"] = PALETTE["teal"]        # selection emphasis only
+    style["pane_group.border"] = PALETTE["bg_darker"]
+
+    # Muted wrap guides (converter set these to teal from panel.border;
+    # Cobalt Next's actual ruler is `editorRuler.foreground: #4f5b66`)
+    style["editor.wrap_guide"] = PALETTE["surface_high"]
+    style["editor.active_wrap_guide"] = PALETTE["surface_higher"]
+
+    # --- Sidebar background ----------------------------------------------
+    # Cobalt Next's actual sideBar.background is `#0f1c23` — darker than
+    # the editor `#1b2b34`. The converter read from `panel.background`
+    # which Cobalt Next sets equal to the editor. Override.
+    # (terminal.background is a separate key, so the terminal panel keeps
+    # its `#1b2b34` background.)
+    style["panel.background"] = PALETTE["bg_dark"]
+    style["surface.background"] = PALETTE["bg_dark"]
+
+    # --- Indent guides ---------------------------------------------------
+    # Cobalt Next defines these but converter ignored them
+    style["editor.indent_guide"] = PALETTE["surface"]
+    style["editor.indent_guide_active"] = PALETTE["surface_higher"]
+
+    # Word/symbol highlight — from editor.wordHighlightBackground/Strong
+    style["editor.document_highlight.read_background"] = PALETTE["surface_high"]
+    style["editor.document_highlight.write_background"] = PALETTE["surface_higher"]
+
+    # Hint colour — converter default is `#969696`, replace with palette grey
+    style["hint"] = PALETTE["surface_higher"]
+
+    # Accents — used for multi-buffer headers, mention highlights, etc.
+    # Use the syntax palette for visual consistency.
+    style["accents"] = [
+        PALETTE["yellow"],
+        PALETTE["teal"],
+        PALETTE["red"],
+        PALETTE["green"],
+        PALETTE["purple"],
+        PALETTE["blue"],
+        PALETTE["orange"],
+        PALETTE["purple_dim"],
+    ]
+
+    # Players — primary cursor + multi-cursor palette.
+    # Player 0 is the local cursor: yellow per Cobalt Next's editorCursor.foreground.
+    # Selection background: editor.selectionBackground = #4f5b66.
+    # Other players use distinct accent colours for collaborative cursors.
+    style["players"] = [
+        {  # local cursor — Cobalt Next signature yellow
+            "cursor":     PALETTE["yellow"],
+            "selection":  PALETTE["surface_high"] + "80",  # 50% alpha
+            "background": PALETTE["yellow"],
+        },
+        {
+            "cursor":     PALETTE["teal"],
+            "selection":  PALETTE["teal"] + "33",
+            "background": PALETTE["teal"],
+        },
+        {
+            "cursor":     PALETTE["green"],
+            "selection":  PALETTE["green"] + "33",
+            "background": PALETTE["green"],
+        },
+        {
+            "cursor":     PALETTE["purple"],
+            "selection":  PALETTE["purple"] + "33",
+            "background": PALETTE["purple"],
+        },
+        {
+            "cursor":     PALETTE["red"],
+            "selection":  PALETTE["red"] + "33",
+            "background": PALETTE["red"],
+        },
+        {
+            "cursor":     PALETTE["blue"],
+            "selection":  PALETTE["blue"] + "33",
+            "background": PALETTE["blue"],
+        },
+        {
+            "cursor":     PALETTE["orange"],
+            "selection":  PALETTE["orange"] + "33",
+            "background": PALETTE["orange"],
+        },
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Apply fixes to one variant
+# ---------------------------------------------------------------------------
+
+def apply_fixes(theme):
+    """Apply syntax fixes, additions, and UI polish to a single theme dict."""
+    style = theme["style"]
+    syntax = style.setdefault("syntax", {})
+
+    for token, value in SYNTAX_FIXES.items():
+        # Replace wholesale (not merge), so wrong style flags get cleared.
+        syntax[token] = deepcopy(value)
+
+    for token, value in SYNTAX_ADDITIONS.items():
+        syntax[token] = deepcopy(value)
+
+    # Sort syntax tokens alphabetically for predictable diffs.
+    style["syntax"] = dict(sorted(syntax.items()))
+
+    shared_ui_polish(style)
+    return theme
+
+
+# ---------------------------------------------------------------------------
+# Build the family
+# ---------------------------------------------------------------------------
+
+def load_variant(filename):
+    with open(HERE / filename) as f:
+        theme = json.load(f)
+    # Strip the per-variant $schema; the family-level one wins.
+    theme.pop("$schema", None)
+    return theme
+
+
+def main():
+    main_theme = apply_fixes(load_variant("approach-c-output.json"))
+    dark_theme = apply_fixes(load_variant("approach-c-output-dark.json"))
+    minimal_theme = apply_fixes(load_variant("approach-c-output-minimal.json"))
+
+    family = {
+        "$schema": "https://zed.dev/schema/themes/v0.2.0.json",
+        "name": "Cobalt Next",
+        "author": "David Leininger (Cobalt Next, MIT) — Zed port",
+        "themes": [main_theme, dark_theme, minimal_theme],
+    }
+
+    out_local = HERE / "cobalt-next.json"
+    out_zed = ZED_THEMES_DIR / "cobalt-next.json"
+
+    out_local.write_text(json.dumps(family, indent=2) + "\n")
+
+    ZED_THEMES_DIR.mkdir(parents=True, exist_ok=True)
+    out_zed.write_text(json.dumps(family, indent=2) + "\n")
+
+    print(f"wrote {out_local}  ({out_local.stat().st_size} bytes)")
+    print(f"wrote {out_zed}  ({out_zed.stat().st_size} bytes)")
+    print(f"{len(family['themes'])} variants in family")
+    print(f"syntax tokens per variant: {len(main_theme['style']['syntax'])}")
+
+
+if __name__ == "__main__":
+    main()

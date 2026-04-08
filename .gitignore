@@ -1,0 +1,9 @@
+# Upstream reference clones — reproducible from reference/README.md, too big to track
+source/
+
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
