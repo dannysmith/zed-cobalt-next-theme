@@ -179,6 +179,131 @@ def shared_ui_polish(style):
     # Hint colour — converter default is `#969696`, replace with palette grey
     style["hint"] = PALETTE["surface_higher"]
 
+    # --- Text states ------------------------------------------------------
+    # text.accent: search match characters, active filter chips, link colour
+    # in the agent panel. Reuse the function/link blue.
+    style["text.accent"] = PALETTE["blue"]
+    # text.placeholder: input placeholder text (search bars, command palette
+    # empty state). Without this, falls back to `text` and reads as real
+    # content rather than a hint.
+    style["text.placeholder"] = PALETTE["surface_higher"]
+    # text.disabled: disabled menu items, disabled buttons.
+    style["text.disabled"] = PALETTE["surface_high"]
+
+    # --- Element states ---------------------------------------------------
+    # element.active: pressed-state background for buttons/inputs (mouse
+    # button held down). Distinct from `element.selected`, which is a
+    # persistent toggle state.
+    style["element.active"] = PALETTE["surface_high"]
+    # element.disabled: disabled button/input background.
+    style["element.disabled"] = PALETTE["bg_dark"]
+    # ghost_element.*: same logic as `element.*` but for transparent
+    # buttons (e.g. toolbar icon buttons). The base background is fully
+    # transparent so the underlying surface shows through until a state
+    # change tints it.
+    style["ghost_element.background"] = "#00000000"
+    style["ghost_element.active"] = PALETTE["surface_high"]
+    style["ghost_element.disabled"] = PALETTE["bg_dark"]
+
+    # --- Editor extras ----------------------------------------------------
+    # editor.invisible: rendered whitespace colour (`show_whitespaces: all`).
+    # Match the wrap guide so invisibles read as muted indentation marks.
+    style["editor.invisible"] = PALETTE["surface_high"]
+    # editor.highlighted_line.background: line that flashes when you use
+    # `editor: go to line` or jump from the outline view. Distinct from
+    # the regular active line highlight.
+    style["editor.highlighted_line.background"] = PALETTE["surface"]
+    # editor.subheader.background: section headers in multi-buffer views
+    # (project search results, "find all references", etc.).
+    style["editor.subheader.background"] = PALETTE["surface"]
+    # editor.debugger_active_line.background: line currently paused on by
+    # the debugger. Tinted yellow so it's distinct from the regular active
+    # line. NOTE: this key isn't enumerated in the v0.2.0 schema but does
+    # exist in Zed's Rust source — if a future Zed rejects it as unknown,
+    # drop this line.
+    style["editor.debugger_active_line.background"] = PALETTE["yellow"] + "33"
+
+    # --- Project panel indent guides --------------------------------------
+    # Sidebar file-tree indent guides — separate from `editor.indent_guide`.
+    # Mirror the editor guide colours so the file tree matches.
+    style["panel.indent_guide"] = PALETTE["surface"]
+    style["panel.indent_guide_active"] = PALETTE["surface_higher"]
+    style["panel.indent_guide_hover"] = PALETTE["surface_high"]
+
+    # --- Title bar inactive ----------------------------------------------
+    # Title bar background when the window loses focus. Subtle, but a nice
+    # visual cue. One shade darker than the active title bar.
+    style["title_bar.inactive_background"] = PALETTE["bg_dark"]
+
+    # --- Status colour family --------------------------------------------
+    # Zed has 14 status families: each ideally has a foreground colour, a
+    # tinted background pill, and a darker border. Pattern (from Zed One):
+    #   foreground = palette colour at full opacity
+    #   .background = same colour at ~10% alpha (`+ "1a"`)
+    #   .border     = `surface` grey
+    # Used in the agent panel diff view, git status sidebar, inline
+    # diagnostics, and assistant panel mentions.
+    #
+    # Already set elsewhere: warning + error foregrounds + borders come
+    # from the converter; the family pattern below adds their backgrounds.
+
+    # warning + error — diagnostic pill backgrounds (the original gap that
+    # motivated this whole block).
+    style["warning.background"] = PALETTE["yellow"] + "1a"
+    style["error.background"] = PALETTE["red"] + "1a"
+
+    # info: informational diagnostics, agent panel hint icons.
+    style["info"] = PALETTE["blue"]
+    style["info.background"] = PALETTE["blue"] + "1a"
+    style["info.border"] = PALETTE["surface"]
+    # success: agent panel success states, test pass indicators.
+    style["success"] = PALETTE["green"]
+    style["success.background"] = PALETTE["green"] + "1a"
+    style["success.border"] = PALETTE["surface"]
+    # predictive: AI / Copilot ghost text colour. Without this, ghost text
+    # falls back to a value that fights with comment colour. Use the muted
+    # comment grey so suggestions read as ghostly but legible.
+    style["predictive"] = PALETTE["surface_higher"]
+    style["predictive.background"] = PALETTE["surface_higher"] + "1a"
+    style["predictive.border"] = PALETTE["surface"]
+    # renamed: git "renamed" status in the project panel.
+    style["renamed"] = PALETTE["blue"]
+    style["renamed.background"] = PALETTE["blue"] + "1a"
+    style["renamed.border"] = PALETTE["surface"]
+    # unreachable: dead-code dimming (LSP unreachable diagnostic). Should
+    # read as faded — dimmer than comments.
+    style["unreachable"] = PALETTE["surface_high"]
+    style["unreachable.background"] = PALETTE["surface_high"] + "1a"
+    style["unreachable.border"] = PALETTE["surface"]
+
+    # Add .background and .border to families that already have a foreground
+    # set by the converter. The agent panel + project diff views are where
+    # these matter most — they pill changed/added/removed regions using
+    # these backgrounds.
+    style["conflict.background"] = PALETTE["purple"] + "1a"
+    style["conflict.border"] = PALETTE["surface"]
+    style["created.background"] = PALETTE["green"] + "1a"
+    style["created.border"] = PALETTE["surface"]
+    style["deleted.background"] = PALETTE["red"] + "1a"
+    style["deleted.border"] = PALETTE["surface"]
+    style["hidden.background"] = PALETTE["surface_higher"] + "1a"
+    style["hidden.border"] = PALETTE["surface"]
+    style["hint.background"] = PALETTE["surface_higher"] + "1a"
+    style["hint.border"] = PALETTE["surface"]
+    style["ignored.background"] = PALETTE["surface_high"] + "1a"
+    style["ignored.border"] = PALETTE["surface"]
+    style["modified.background"] = PALETTE["yellow"] + "1a"
+    style["modified.border"] = PALETTE["surface"]
+
+    # --- Icons -----------------------------------------------------------
+    # Most icon colours can inherit from text, but icon.accent is what
+    # tints toggled-on icon buttons (active filter indicators, selected
+    # toolbar tools).
+    style["icon"] = PALETTE["fg"]
+    style["icon.muted"] = style.get("text.muted", PALETTE["surface_higher"])
+    style["icon.disabled"] = PALETTE["surface_high"]
+    style["icon.accent"] = PALETTE["blue"]
+
     # Accents — used for multi-buffer headers, mention highlights, etc.
     # Use the syntax palette for visual consistency.
     style["accents"] = [
